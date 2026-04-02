@@ -1,10 +1,13 @@
 import os, torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from monai.metrics import DiceMetric
-from monai.inferers import sliding_window_inference
-from monai.data import decollate_batch
-from monai.transforms import AsDiscrete, Activations, Compose
+from monai.metrics.meandice import DiceMetric
+from monai.inferers.utils import sliding_window_inference
+from monai.data.utils import decollate_batch
+from monai.transforms.post.array import AsDiscrete, Activations
+from monai.transforms.compose import Compose
+from typing import cast, List
+
 
 import config
 from dataset import load_datalists, get_dataloaders
@@ -14,6 +17,7 @@ from utils.losses import get_loss
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ── Data ────────────────────────────────────────────────────────────────
     train_files, val_files = load_datalists(config.TRAIN_JSON, config.VAL_JSON)
@@ -24,7 +28,7 @@ def main():
     )
 
     # ── Model, loss, optimizer ───────────────────────────────────────────────
-    model     = get_model(config.NUM_CLASSES, config.PRETRAINED_WEIGHTS, device)
+    model     = get_model(config.NUM_CLASSES, config.PRETRAINED_WEIGHTS, device=device_str)
     loss_fn   = get_loss(config.LOSS_TYPE)
     optimizer = AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=1e-5)
     scheduler = CosineAnnealingLR(optimizer, T_max=config.MAX_EPOCHS)
@@ -70,11 +74,10 @@ def main():
                     preds  = sliding_window_inference(
                         images, config.ROI_SIZE, 4, model, overlap=0.5
                     )
-                    preds_list  = [post_pred(p) for p in decollate_batch(preds)]
-                    labels_list = [post_label(l) for l in decollate_batch(labels)]
+                    preds_list  = cast(List[torch.Tensor],[post_pred(p) for p in cast(List[torch.Tensor], decollate_batch(preds))])
+                    labels_list = cast(List[torch.Tensor], [post_label(l) for l in cast(List[torch.Tensor], decollate_batch(labels))])
                     dice_metric(preds_list, labels_list)
-
-            mean_dice = dice_metric.aggregate().mean().item()
+            mean_dice = dice_metric.aggregate().mean().item() # type:ignore
             dice_metric.reset()
             print(f"  Val Dice: {mean_dice:.4f}")
 
@@ -82,7 +85,7 @@ def main():
                 best_dice = mean_dice
                 torch.save(model.state_dict(),
                            os.path.join(config.CHECKPOINT_DIR, "best_model.pt"))
-                print(f"  ✓ Saved best model (dice={best_dice:.4f})")
+                print(f"  Best Model Saved (dice={best_dice:.4f})")
 
 if __name__ == "__main__":
     main()
