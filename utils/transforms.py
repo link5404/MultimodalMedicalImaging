@@ -1,11 +1,14 @@
-from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd, NormalizeIntensityd,
-    RandSpatialCropd, RandFlipd, RandRotate90d, ToTensord
-)
+from monai.transforms.compose import Compose
+from monai.transforms.io.dictionary import LoadImaged
+from monai.transforms.utility.dictionary import EnsureChannelFirstd
+from monai.transforms.intensity.dictionary import NormalizeIntensityd
+from monai.transforms.spatial.dictionary import RandFlipd, RandRotate90d
+from monai.transforms.croppad.dictionary import RandSpatialCropd
+from monai.transforms.utility.dictionary import ToTensord
 import numpy as np
 
 class RandomModalityMaskd:
-    """Zero out 0–MAX_MASKED modality channels with probability MASK_PROB."""
+    """Zero out 0-MAX_MASKED modality channels with probability MASK_PROB."""
 
     def __init__(self, keys, mask_prob=0.5, max_masked=2):
         self.keys      = keys

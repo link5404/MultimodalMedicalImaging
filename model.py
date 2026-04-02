@@ -1,9 +1,8 @@
 import torch
-from monai.networks.nets import SwinUNETR
+from monai.networks.nets import swin_unetr
 
 def get_model(num_classes, pretrained_weights=None, device="cuda"):
-    model = SwinUNETR(
-        img_size=(128, 128, 128),
+    model = swin_unetr.SwinUNETR(
         in_channels=4,              # T1, T1c, T2, FLAIR
         out_channels=num_classes,
         feature_size=48,
@@ -12,7 +11,6 @@ def get_model(num_classes, pretrained_weights=None, device="cuda"):
 
     if pretrained_weights:
         state = torch.load(pretrained_weights, map_location=device)
-        # strip 'swinViT.' prefix if loading SSL pretrained backbone only
         model.load_state_dict(state, strict=False)
         print(f"Loaded pretrained weights from {pretrained_weights}")
 

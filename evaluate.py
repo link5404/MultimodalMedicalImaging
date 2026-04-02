@@ -1,9 +1,14 @@
 # evaluate.py
 import torch
-from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric
-from monai.data import DataLoader, Dataset, decollate_batch
-from monai.transforms import AsDiscrete, Activations, Compose
+from monai.inferers.utils import sliding_window_inference
+from monai.metrics.meandice import DiceMetric
+from monai.data.dataset import Dataset
+from monai.data.dataloader import DataLoader
+from monai.data.utils import decollate_batch
+from monai.transforms.compose import Compose
+from monai.transforms.post.array import AsDiscrete, Activations
+from typing import cast, List
+
 
 import config
 from model import get_model
@@ -14,7 +19,8 @@ BEST_CHECKPOINT = "/path/to/checkpoints/best_model.pt"
 
 def evaluate():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model  = get_model(config.NUM_CLASSES, BEST_CHECKPOINT, device)
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    model  = get_model(config.NUM_CLASSES, BEST_CHECKPOINT, device=device_str)
     model.eval()
 
     import json
@@ -35,13 +41,14 @@ def evaluate():
             preds  = sliding_window_inference(
                 images, config.ROI_SIZE, 4, model, overlap=0.5
             )
-            preds_list  = [post_pred(p) for p in decollate_batch(preds)]
-            labels_list = [post_label(l) for l in decollate_batch(labels)]
+            preds_list  = cast(List[torch.Tensor],[post_pred(p) for p in cast(List[torch.Tensor], decollate_batch(preds))])
+            labels_list = cast(List[torch.Tensor], [post_label(l) for l in cast(List[torch.Tensor], decollate_batch(labels))])
             dice_metric(preds_list, labels_list)
 
     per_class_dice = dice_metric.aggregate()
     print("Per-class Dice:", per_class_dice)
-    print("Mean Dice:", per_class_dice.mean().item())
+    
+    print("Mean Dice:", per_class_dice.mean().item()) # type:ignore
 
 if __name__ == "__main__":
     evaluate()

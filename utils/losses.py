@@ -1,4 +1,4 @@
-from monai.losses import DiceLoss, DiceCELoss
+from monai.losses.dice import DiceLoss, DiceCELoss
 
 def get_loss(loss_type="dice_ce"):
     if loss_type == "dice":

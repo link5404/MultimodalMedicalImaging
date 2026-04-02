@@ -1,5 +1,7 @@
 import json
-from monai.data import DataLoader, Dataset, CacheDataset
+
+from monai.data.dataset import CacheDataset
+from monai.data.dataloader import DataLoader
 
 def load_datalists(train_json, val_json):
     with open(train_json) as f:
