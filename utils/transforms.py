@@ -17,12 +17,13 @@ class RandomModalityMaskd:
 
     def __call__(self, data):
         if np.random.rand() < self.mask_prob:
+            n_channels = data[self.keys[0]].shape[0]  # 4 for BraTS
             n_mask = np.random.randint(1, self.max_masked + 1)
-            channels = np.random.choice(len(self.keys), n_mask, replace=False)
+            channels = np.random.choice(n_channels, n_mask, replace=False)
             for key in self.keys:
-                img = data[key]
+                img = data[key].clone()
                 for c in channels:
-                    img[c] = 0.0          # zero-out selected channel
+                    img[c] = 0.0
                 data[key] = img
         return data
 
