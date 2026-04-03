@@ -2,9 +2,8 @@
 
 # ── Paths (edit these) ──────────────────────────────────────────────────────
 VAL_FRACTION= 0.2
-DATA_DIR       = "/path/to/your/dataset" 
-VAL_JSON        = "/path/to/val_split.json"
-CHECKPOINT_DIR  = "/path/to/checkpoints"
+DATA_DIR       = "dataset/ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData" 
+CHECKPOINT_DIR  = "/model/checkpoint"
 PRETRAINED_WEIGHTS = "/path/to/swin_unetr_pretrained.pt"  # optional
 
 # ── Modalities ───────────────────────────────────────────────────────────────

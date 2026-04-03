@@ -20,7 +20,7 @@ def main():
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ── Data ────────────────────────────────────────────────────────────────
-    train_files, val_files = load_datalists(config.TRAIN_JSON, config.VAL_JSON)
+    train_files, val_files = load_datalists(config.DATA_DIR, config.VAL_FRACTION)
     train_tx = get_train_transforms(config.ROI_SIZE, config.MASK_PROB, config.MAX_MASKED)
     val_tx   = get_val_transforms(config.ROI_SIZE)
     train_loader, val_loader = get_dataloaders(

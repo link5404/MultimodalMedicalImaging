@@ -1,4 +1,3 @@
-import json
 
 from monai.data.dataset import CacheDataset
 from monai.data.dataloader import DataLoader
