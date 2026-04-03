@@ -1,8 +1,8 @@
 # config.py
 
 # ── Paths (edit these) ──────────────────────────────────────────────────────
-DATA_DIR        = "/path/to/your/dataset"          # root of CFB-GBM or BraTS
-TRAIN_JSON      = "/path/to/train_split.json"      # {"training": [{"image": [...], "label": "..."}]}
+VAL_FRACTION= 0.2
+DATA_DIR       = "/path/to/your/dataset" 
 VAL_JSON        = "/path/to/val_split.json"
 CHECKPOINT_DIR  = "/path/to/checkpoints"
 PRETRAINED_WEIGHTS = "/path/to/swin_unetr_pretrained.pt"  # optional
