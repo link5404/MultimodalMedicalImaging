@@ -1,0 +1,7 @@
+monai>=1.3.0
+numpy
+nibabel
+torch
+pytorch-lightning>=2.0
+pyyaml
+tqdm

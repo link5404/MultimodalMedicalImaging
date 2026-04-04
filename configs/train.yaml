@@ -1,0 +1,14 @@
+data_root: F:\\deep learning project\\MultimodalMedicalImaging\\dataset\\ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData
+image_size: [96, 96, 96]
+batch_size: 1
+num_workers: 0
+max_epochs: 100
+lr: 0.0001
+weight_decay: 0.00001
+val_split: 0.2
+seed: 42
+dropout_prob: 0.5
+max_drop_modalities: 3
+feature_size: 24
+in_channels: 4
+out_channels: 4
