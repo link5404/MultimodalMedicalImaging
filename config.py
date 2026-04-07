@@ -2,13 +2,13 @@
 
 # ── Paths (edit these) ──────────────────────────────────────────────────────
 VAL_FRACTION= 0.2
-DATA_DIR       = "dataset/ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData" 
-CHECKPOINT_DIR  = "/model/checkpoint"
-PRETRAINED_WEIGHTS = "/path/to/swin_unetr_pretrained.pt"  # optional
+DATA_DIR       = "/home/jordanatanassov/MultimodalMedicalImaging/ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData" 
+CHECKPOINT_DIR  = "/home/jordanatanassov/MultimodalMedicalImaging/model"
+#PRETRAINED_WEIGHTS = "/path/to/swin_unetr_pretrained.pt"  # optional
 
 # ── Modalities ───────────────────────────────────────────────────────────────
 MODALITIES = ["t1", "t1ce", "t2", "flair"]        # adjust to your dataset naming
-NUM_CLASSES = 3                                    # BraTS: TC, WT, ET
+NUM_CLASSES = 4                                   # BraTS: TC, WT, ET
 
 # ── Training ─────────────────────────────────────────────────────────────────
 BATCH_SIZE      = 1

@@ -22,12 +22,12 @@ def load_datalists(data_dir, val_fraction=0.2, seed=42):
         n = case.name
         return {
             "image": [
-                os.path.join(case.path, f"{n}_t1.nii.gz"),
-                os.path.join(case.path, f"{n}_t1ce.nii.gz"),
-                os.path.join(case.path, f"{n}_t2.nii.gz"),
-                os.path.join(case.path, f"{n}_flair.nii.gz"),
+                os.path.join(case.path, f"{n}-t1c.nii.gz"),
+                os.path.join(case.path, f"{n}-t1n.nii.gz"),
+                os.path.join(case.path, f"{n}-t2f.nii.gz"),
+                os.path.join(case.path, f"{n}-t2w.nii.gz"),
             ],
-            "label": os.path.join(case.path, f"{n}_seg.nii.gz"),
+            "label": os.path.join(case.path, f"{n}-seg.nii.gz"),
         }
 
     all_files = [make_entry(c) for c in cases]

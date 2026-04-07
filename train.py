@@ -7,7 +7,8 @@ from monai.data.utils import decollate_batch
 from monai.transforms.post.array import AsDiscrete, Activations
 from monai.transforms.compose import Compose
 from typing import cast, List
-
+from monai.networks.utils import one_hot
+import tqdm
 
 import config
 from dataset import load_datalists, get_dataloaders
@@ -18,7 +19,8 @@ from utils.losses import get_loss
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
-
+    print(f"started training with {device_str}")
+    print("started data management")
     # ── Data ────────────────────────────────────────────────────────────────
     train_files, val_files = load_datalists(config.DATA_DIR, config.VAL_FRACTION)
     train_tx = get_train_transforms(config.ROI_SIZE, config.MASK_PROB, config.MAX_MASKED)
@@ -26,13 +28,14 @@ def main():
     train_loader, val_loader = get_dataloaders(
         train_files, val_files, train_tx, val_tx, config.BATCH_SIZE
     )
-
+    print("end data management")
     # ── Model, loss, optimizer ───────────────────────────────────────────────
-    model     = get_model(config.NUM_CLASSES, config.PRETRAINED_WEIGHTS, device=device_str)
+    print("loading model, scheduler")
+    model     = get_model(config.NUM_CLASSES, None, device=device_str)
     loss_fn   = get_loss(config.LOSS_TYPE)
     optimizer = AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=1e-5)
     scheduler = CosineAnnealingLR(optimizer, T_max=config.MAX_EPOCHS)
-
+    print("done loading model and scheduler")
     # ── Fine-tuning option: freeze encoder, train decoder first ──────────────
     # Uncomment to freeze the Swin backbone for the first N epochs:
     # for name, param in model.named_parameters():
@@ -46,17 +49,18 @@ def main():
 
     best_dice = 0.0
     os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
-
+    print("start training")
     for epoch in range(1, config.MAX_EPOCHS + 1):
         # ── Train ────────────────────────────────────────────────────────────
         model.train()
         epoch_loss = 0.0
-        for batch in train_loader:
+        for batch in tqdm(train_loader):
             images = batch["image"].to(device)
             labels = batch["label"].to(device)
             optimizer.zero_grad()
             preds = model(images)
-            loss  = loss_fn(preds, labels)
+            labels_onehot = one_hot(labels, num_classes=config.NUM_CLASSES)  # [B, 3, 128, 128, 128]
+            loss = loss_fn(preds, labels_onehot)
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
