@@ -24,7 +24,7 @@ run
 
 ## Step 4
 
-Next, change the dropount_experiment.sh variables to the ones to your system.
+Next, change the dropout_experiment.sh variables to the ones to your system.
 then run
 
-`./foldmaker.sh`
+`./dropout_experiment.sh`
