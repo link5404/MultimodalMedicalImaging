@@ -28,7 +28,7 @@ import torch
 from torch.amp import autocast, GradScaler
 
 from tqdm.auto import tqdm
-from models import SwinUNETRWithFiLM
+from deepFilm import SwinUNETRWithFiLM
 
 
 
@@ -197,7 +197,7 @@ sw_batch_size = 4
 fold = 1
 infer_overlap = 0.5
 max_epochs = 100
-val_every = 10
+val_every = 2
 
 
 if __name__ == "__main__":
@@ -235,14 +235,32 @@ if __name__ == "__main__":
         if k in state and state[k].shape == v.shape:
             state[k] = v
     base.load_state_dict(state, strict=False)
+    def probe_decoder_channels(base, device, roi=(128,128,128)):
+        hooks = {}
+        handles = []
+        for name in ["decoder1","decoder2","decoder3","decoder4"]:
+            block = getattr(base, name)
+            def make_hook(n):
+                def h(module, input, output):
+                    hooks[n] = output.shape[1]
+                return h
+            handles.append(block.register_forward_hook(make_hook(name)))
+        dummy = torch.zeros(1, 4, *roi).to(device)
+        with torch.no_grad():
+            base(dummy)
+        for h in handles:
+            h.remove()
+        print("Actual decoder channels:", hooks)
+
+    probe_decoder_channels(base, device)
 
     model = SwinUNETRWithFiLM(base, cond_dim=128).to(device)
     model.freeze_base_unfreeze_film()
+    print(f"Trainable FiLM+encoder params: {model.film_parameter_count():,}")
 
     # 3. Dynamo/lru_cache warning — define model_inferer BEFORE torch.compile:
     def infer_fn(x):
-        cond = torch.zeros(x.shape[0], 128, device=x.device)
-        return model(x, cond)
+        return model(x)
 
     model_inferer = partial(
         sliding_window_inference,
@@ -281,8 +299,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             
             with autocast("cuda"):
-                cond = torch.zeros(data.shape[0], 128, device=device)
-                logits = model(data, cond)
+                logits = model(data)
                 loss = loss_func(logits, target)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -317,7 +334,6 @@ if __name__ == "__main__":
                 data, target = batch_data["image"].to(device), batch_data["label"].to(device)
                 print("ET voxels in target:", target[:, 2].sum().item())
 
-                cond = torch.zeros(data.shape[0], 128, device=device)
                 logits = model_inferer(data)
                 val_labels_list = decollate_batch(target)
                 val_outputs_list = decollate_batch(logits)
@@ -376,6 +392,12 @@ if __name__ == "__main__":
         for epoch in range(start_epoch, max_epochs):
             print(time.ctime(), "Epoch:", epoch)
             epoch_time = time.time()
+            if epoch == 10:
+                model.unfreeze_base()
+                for g in optimizer.param_groups:
+                    g['lr'] = 1e-5
+                print("Unfroze base model for full fine-tuning.")
+
             train_loss = train_epoch(
                 model,
                 train_loader,
@@ -430,7 +452,7 @@ if __name__ == "__main__":
                     epoch=epoch,
                     optimizer=optimizer,      # add
                     scheduler=scheduler,      # add
-                    filename=f"model_checkpoint_FiLM{epoch}_{val_avg_acc:.2f}.pt",
+                    filename=f"model_checkpoint_FiLM_DEEP{epoch}_{val_avg_acc:.2f}.pt",
                     best_acc=val_acc_max,
                     dir_add=root_dir,
                 )
@@ -496,6 +518,8 @@ if __name__ == "__main__":
     save_checkpoint(
         model,
         epoch=max_epochs - 1,
+        optimizer=optimizer,
+        scheduler=scheduler,
         filename="model_final.pt",
         best_acc=val_acc_max,
         dir_add=root_dir,

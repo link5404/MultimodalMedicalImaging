@@ -3,73 +3,36 @@ import torch.nn as nn
 from monai.networks.nets import SwinUNETR
 
 
-class AdaptiveInstanceNorm3d(nn.Module):
-    def __init__(self, num_features: int, eps: float = 1e-5):
+class FiLM3d(nn.Module):
+    def __init__(self, channels: int, cond_dim: int):
         super().__init__()
-        self.in_norm = nn.InstanceNorm3d(num_features, affine=False, eps=eps)
-        self.gamma = nn.Parameter(torch.ones(1, num_features, 1, 1, 1))
-        self.beta  = nn.Parameter(torch.zeros(1, num_features, 1, 1, 1))
+        self.to_gamma_beta = nn.Linear(cond_dim, channels * 2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.gamma * self.in_norm(x) + self.beta
+    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        gb = self.to_gamma_beta(cond)
+        gamma, beta = gb.chunk(2, dim=-1)
+        gamma = gamma.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        beta = beta.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        return x * (1.0 + gamma) + beta
 
 
-class SwinUNETRWithAdaIN(nn.Module):
-    def __init__(self, base_model: SwinUNETR, feature_size: int = 48):
+class SwinUNETRWithFiLM(nn.Module):
+    def __init__(self, base_model: SwinUNETR, cond_dim: int = 128):
         super().__init__()
         self.base = base_model
+        self.film = FiLM3d(channels=3, cond_dim=cond_dim)
 
-        decoder_channels = [
-            feature_size * 16,
-            feature_size * 8,
-            feature_size * 4,
-            feature_size * 2,
-            feature_size,
-        ]
+    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        out = self.base(x)
+        out = self.film(out, cond)
+        return out
 
-        self.adain_layers = nn.ModuleList([
-            AdaptiveInstanceNorm3d(c) for c in decoder_channels
-        ])
-
-        self._hooks = []
-        self._register_hooks()
-
-    def _register_hooks(self):
-        decoder_blocks = [
-            self.base.decoder5,
-            self.base.decoder4,
-            self.base.decoder3,
-            self.base.decoder2,
-            self.base.decoder1,
-        ]
-        for i, block in enumerate(decoder_blocks):
-            hook = block.register_forward_hook(
-                lambda module, inp, out, i=i: self.adain_layers[i](out)
-            )
-            self._hooks.append(hook)
-
-    def remove_hooks(self):
-        for h in self._hooks:
-            h.remove()
-        self._hooks.clear()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.base(x)
-
-    def freeze_base_unfreeze_adain(self):
+    def freeze_base_unfreeze_film(self):
         for p in self.base.parameters():
             p.requires_grad = False
-        for p in self.adain_layers.parameters():
+        for p in self.film.parameters():
             p.requires_grad = True
 
-    def unfreeze_decoder_and_adain(self):
-        decoder_parts = [
-            self.base.decoder1, self.base.decoder2,
-            self.base.decoder3, self.base.decoder4,
-            self.base.decoder5,
-        ]
-        for part in decoder_parts:
-            for p in part.parameters():
-                p.requires_grad = True
-        for p in self.adain_layers.parameters():
+    def unfreeze_base(self):
+        for p in self.base.parameters():
             p.requires_grad = True
