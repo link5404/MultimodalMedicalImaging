@@ -1,2 +1,6 @@
 /dataset/*
 get_data.py
+ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData/*
+ASNR-MICCAI-BraTS2023-GLI-Challenge-ValidationData/*
+logs/*
+venv/*
