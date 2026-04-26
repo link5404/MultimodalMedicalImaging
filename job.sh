@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=4:00:00
+#SBATCH --time=2:00:00
 #SBATCH --gres=gpu:1
 # interact -A cs5814 -p a100_normal_q --gres=gpu:1 
-python ./scripts/test.py
+python ./scripts/train_FiLM_DEEP.py

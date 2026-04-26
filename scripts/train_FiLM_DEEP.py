@@ -22,6 +22,8 @@ from monai.utils.enums import MetricReduction
 from monai.networks.nets import SwinUNETR
 from monai import data
 from monai.data import decollate_batch
+from monai.transforms import MapTransform
+
 from functools import partial
 
 import torch
@@ -30,6 +32,18 @@ from torch.amp import autocast, GradScaler
 from tqdm.auto import tqdm
 from deepFilm import SwinUNETRWithFiLM
 
+class ConvertBraTS2023Labelsd(MapTransform):
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            label = d[key]
+            result = torch.stack([
+                (label == 1) | (label == 3),               # TC: NCR + ET
+                (label == 1) | (label == 2) | (label == 3), # WT: all tumor
+                (label == 3),                               # ET: enhancing only
+            ], dim=0).float()
+            d[key] = result
+        return d
 
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -90,17 +104,6 @@ def save_checkpoint(model, epoch, optimizer, scheduler, filename="model.pt", bes
     torch.save(save_dict, filename)
     print("Saving checkpoint", filename)
 
-def load_checkpoint(model, optimizer, scheduler, filename="model_checkpoint.pt", dir_add=root_dir):
-    filepath = os.path.join(dir_add, filename)
-    if os.path.exists(filepath):
-        checkpoint = torch.load(filepath, map_location=device, weights_only=False)
-        model.load_state_dict(checkpoint["state_dict"])
-        # intentionally skip optimizer and scheduler state
-        start_epoch = checkpoint["epoch"] + 1
-        best_acc = checkpoint["best_acc"]
-        print(f"Loaded checkpoint (epoch {checkpoint['epoch']}, best_acc {best_acc:.4f})")
-        return start_epoch, best_acc
-
 def get_loader(batch_size, data_dir, json_list, fold, roi):
     data_dir = data_dir
     datalist_json = json_list
@@ -108,7 +111,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi):
     train_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            ConvertBraTS2023Labelsd(keys="label"),
             transforms.CropForegroundd(
                 keys=["image", "label"],
                 source_key="image",
@@ -131,7 +134,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            ConvertBraTS2023Labelsd(keys="label"),
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         ]
     )
@@ -190,6 +193,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi):
         break
 
     return train_loader, val_loader
+    
 json_list = "/home/jordanatanassov/MultimodalMedicalImaging/brats23_folds.json"
 roi = (128, 128, 128)
 batch_size = 2
@@ -197,7 +201,7 @@ sw_batch_size = 4
 fold = 1
 infer_overlap = 0.5
 max_epochs = 100
-val_every = 2
+val_every = 1
 
 
 if __name__ == "__main__":
@@ -229,7 +233,8 @@ if __name__ == "__main__":
         use_checkpoint=False,
     ).to(device)
 
-    ckpt = torch.load("/home/jordanatanassov/MultimodalMedicalImaging/scripts/model_checkpoint29_0.55.pt", map_location=device, weights_only=False)
+    print("Loading Checkpoint")
+    ckpt = torch.load("/home/jordanatanassov/MultimodalMedicalImaging/scripts/model_checkpoint9_0.87.pt", map_location=device, weights_only=False)
     state = base.state_dict()
     for k, v in ckpt["state_dict"].items():
         if k in state and state[k].shape == v.shape:
@@ -256,6 +261,7 @@ if __name__ == "__main__":
 
     model = SwinUNETRWithFiLM(base, cond_dim=128).to(device)
     model.freeze_base_unfreeze_film()
+    print("Done Loading And Attatching FiLM")
     print(f"Trainable FiLM+encoder params: {model.film_parameter_count():,}")
 
     # 3. Dynamo/lru_cache warning — define model_inferer BEFORE torch.compile:
@@ -483,12 +489,6 @@ if __name__ == "__main__":
 
     start_epoch = 0
     val_acc_max_loaded = 0.0
-    try:
-        start_epoch, val_acc_max_loaded = load_checkpoint(model, optimizer, scheduler, filename="/home/jordanatanassov/MultimodalMedicalImaging/scripts/model_checkpoint29_0.55.pt")
-        print(f"Resuming training from epoch {start_epoch} with best accuracy {val_acc_max_loaded:.4f}")
-    except Exception as e:
-        print(f"Error loading checkpoint: {e}")
-        print("Starting training from scratch.")
         
         
     (

@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import nibabel as nib
 
-from monai.losses.dice import DiceLoss
 from monai.inferers import sliding_window_inference
 from monai import transforms
 from monai.transforms import (
@@ -23,11 +22,27 @@ from monai.networks.nets import SwinUNETR
 from monai import data
 from monai.data import decollate_batch
 from functools import partial
+from monai.losses import DiceLoss
+from monai.losses import DiceCELoss
 
 import torch
-from torch.cuda.amp import autocast, GradScaler
-
+from torch.amp import autocast, GradScaler
+from monai.transforms import MapTransform
 from tqdm.auto import tqdm
+
+class ConvertBraTS2023Labelsd(MapTransform):
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            label = d[key]
+            result = torch.stack([
+                (label == 1) | (label == 3),               # TC: NCR + ET
+                (label == 1) | (label == 2) | (label == 3), # WT: all tumor
+                (label == 3),                               # ET: enhancing only
+            ], dim=0).float()
+            d[key] = result
+        return d
+
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = "/home/jordanatanassov/MultimodalMedicalImaging/ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData"
@@ -105,7 +120,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi):
     train_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            ConvertBraTS2023Labelsd(keys="label"),
             transforms.CropForegroundd(
                 keys=["image", "label"],
                 source_key="image",
@@ -128,7 +143,7 @@ def get_loader(batch_size, data_dir, json_list, fold, roi):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
+            ConvertBraTS2023Labelsd(keys="label"),
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         ]
     )
@@ -168,18 +183,26 @@ sw_batch_size = 4
 fold = 1
 infer_overlap = 0.5
 max_epochs = 100
-val_every = 10
+val_every = 5
 
 
 if __name__ == "__main__":
     train_loader, val_loader = get_loader(batch_size, data_dir, json_list, fold, roi)
-
+    
     case_id = "BraTS-GLI-00000-000"
     img_add = os.path.normpath(os.path.join(data_dir, case_id, f"{case_id}-t2w.nii.gz"))
     label_add = os.path.normpath(os.path.join(data_dir, case_id, f"{case_id}-seg.nii.gz"))
     img = nib.load(img_add).get_fdata()
     label = nib.load(label_add).get_fdata()
     print(f"image shape: {img.shape}, label shape: {label.shape}")
+    raw = nib.load(label_add).get_fdata()
+    print("Raw label unique values:", np.unique(raw))
+    print("ET (label 3) voxel count:", (raw == 3).sum())
+    print("Label 4 voxel count:", (raw == 4).sum())
+    
+    raw_tensor = torch.tensor(label).unsqueeze(0)  # add channel dim -> (1, 240, 240, 155)
+    test = {"label": raw_tensor}
+    
     """out
     plt.figure("image", (18, 6))
     plt.subplot(1, 2, 1)
@@ -190,6 +213,19 @@ if __name__ == "__main__":
     plt.imshow(label[:, :, 78])
     plt.show()
     """
+
+    # Grab one batch from the val loader (no augmentation, easier to inspect)
+    sample = next(iter(val_loader))
+    img = sample["image"]   # shape: (B, 4, H, W, D)
+    lbl = sample["label"]   # shape: (B, 3, H, W, D)
+
+    print("Image shape:", img.shape)
+    print("Label shape:", lbl.shape)
+
+    # Check each label channel has voxels
+    for i, name in enumerate(["TC", "WT", "ET"]):
+        voxels = lbl[0, i].sum().item()
+        print(f"  Channel {i} ({name}): {voxels:.0f} positive voxels")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -211,9 +247,8 @@ if __name__ == "__main__":
         predictor=model,          # uncompiled model reference
         overlap=infer_overlap,
     )
-    from monai.losses import DiceCELoss
 
-    dice_loss = DiceCELoss(to_onehot_y=False, sigmoid=True, lambda_dice=1.0, lambda_ce=1.0)
+    dice_loss = DiceLoss(to_onehot_y=False, sigmoid=True)
     post_sigmoid = Activations(sigmoid=True)
     post_pred = AsDiscrete(argmax=False, threshold=0.5)
     dice_acc = DiceMetric(include_background=True, reduction=MetricReduction.MEAN_BATCH, get_not_nans=True)
@@ -240,9 +275,12 @@ if __name__ == "__main__":
             data, target = batch_data["image"].to(device), batch_data["label"].to(device)
             optimizer.zero_grad()
             
-            with autocast():
+            with autocast(device_type="cuda"):
                 logits = model(data)
                 loss = loss_func(logits, target)
+                
+            with torch.no_grad():
+                preds = torch.sigmoid(logits) > 0.5
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -485,3 +523,5 @@ if __name__ == "__main__":
     plt.xlabel("epoch")
     plt.plot(trains_epoch, dices_et, color="purple")
     plt.savefig(os.path.join(root_dir, "dice_per_region.png"))
+    
+    
