@@ -2,7 +2,7 @@
 
 # Use the Unix-style path for Git Bash/WSL
 DATA_DIR="/f/deep learning project/MultimodalMedicalImaging/dataset/ASNR-MICCAI-BraTS2023-GLI-Challenge-TrainingData"
-OUTPUT_JSON="./brats21_folds.json"
+OUTPUT_JSON="./brats23_folds.json"
 
 # Check if directory exists
 if [ ! -d "$DATA_DIR" ]; then
